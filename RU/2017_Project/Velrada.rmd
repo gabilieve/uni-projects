@@ -1,0 +1,430 @@
+---
+title: "Untitled"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r}
+#loading all libraries that are required
+library(leaps)
+library(reshape2)
+library(DAAG)
+library(Hmisc)
+library(glmnet)
+library(pls)
+library(gamlr)
+```
+
+
+```{r}
+#loading data, binding seperate Aromatic content value
+load('S2_2017_STAT1000_ProjectData.RData')
+set <- cbind(Arom, ASpectra)
+```
+
+
+```{r }
+plot((Arom) ~ X950+X970+X990+X1010+X1030+X1050+X1070+X1090+X1110+X1130+X1150+X1170+X1190+X1210+X1230+X1250+X1270+X1290+X1310+X1330+X1350+X1370+X1390, data = set)
+#Plotting every spectra with a 20mm gap
+#Trying to spot any linear trend by eye
+
+lm1 <- lm(Arom ~ X990, data = set)
+lm2 <- lm(Arom ~ X1010, data = set)
+lm3 <- lm(Arom ~ X1030, data = set)
+lm4 <- lm(Arom ~ X1050, data = set)
+lm5 <- lm(Arom ~ X1070, data = set)
+lm6 <- lm(Arom ~ X1090, data = set)
+lm7 <- lm(Arom ~ X1250, data = set)
+#Creating linear models of what appears to be best linear models
+
+anova(lm1)
+t.test(set$X990)
+shapiro.test(set$X990)
+hist(set$X990)
+anova(lm2)
+anova(lm3)
+anova(lm4)
+anova(lm5)
+anova(lm6)
+anova(lm7)
+#Check of F statistic for relationship of variables
+```
+
+```{r}
+AllSubsets <- regsubsets(Arom ~ ., nvmax = 1, nbest = 4, data =
+set, really.big = T)
+#subsets the data checking for the best value of R-squared
+#nbest allows to print out the top 4 models in order of how good they are
+summ <- summary(AllSubsets)
+summ$outmat
+#Returns a visualization of where the best 4 models are located
+```
+
+```{r}
+lm996.f <- lm(Arom ~ X996, data = set)
+#X996 has a positive linear correlation
+lm1044.f <- lm(Arom ~ X1044, data = set)
+#X1044 has a negative linear correlation
+#This was done to see if there is any difference whether positive/negative
+
+logm996 <- lm(log(Arom) ~ X996, data = set)
+lm996.cubed <- lm((Arom)^1/3 ~ X996, data = set)
+lm996.2 <- lm((Arom)^2 ~ X996, data = set)
+lm996.sqrt <- lm(sqrt(Arom) ~ X996, data = set)
+#Transformation of X996 to see if better results are acquired
+logm1044 <- lm(log(Arom) ~ X1044, data = set)
+lm1044.cubed <- lm((Arom)^1/3 ~ X1044, data = set)
+lm1044.2 <- lm((Arom)^2 ~ X1044, data = set)
+lm1044.sqrt <- lm(sqrt(Arom) ~ X1044, data = set)
+#transformations of X1044 to see if better results are acquired
+
+summary(lm996.f)
+summary(logm996)
+summary(lm996.cubed)
+summary(lm996.2)
+summary(lm996.sqrt)
+#Summary of all transformations of wavelength X996
+summary(lm1044.f)
+summary(logm1044)
+summary(lm1044.cubed)
+summary(lm1044.2)
+summary(lm1044.sqrt)
+#Summary of all transformations of wavelength X1044
+
+std996.f <- rstandard(lm996.f)
+std1044.f <- rstandard(lm1044.f)
+#produces standardized residuals for each model
+
+hist(std996.f)
+qqnorm(std996.f)
+plot(std996.f ~ lm996.f$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+#Histogram, QQplot and scatterplot to find leverage/outliers in X996
+
+hist(std1044.f)
+qqnorm(std1044.f)
+plot(std1044.f ~ lm1044.f$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+#Histogram, QQplot and scatterplot to find leverage/outliers in X1044
+
+plot(cooks.distance(lm996.f))
+#Cooks plot to find outliers in X996
+plot(cooks.distance(lm1044.f))
+#Cooks plot to find outliers in X1044
+```
+
+```{r}
+df.u <- set[-c(4, 306, 353, 354), ]
+#Deleting outlier points previously found
+#Used identify() on R's original interface to find points
+```
+
+```{r}
+lm1.c <- lm(Arom ~ X990, data = df.u)
+lm2.c <- lm(Arom ~ X1010, data = df.u)
+lm3.c <- lm(Arom ~ X1030, data = df.u)
+lm4.c <- lm(Arom ~ X1250, data = df.u) 
+lm5.c <- lm(Arom ~ X1044, data = df.u)
+lm6.c <- lm(Arom ~ X996, data = df.u)
+#Replotting best models with new dataset
+
+std1.c <- rstandard(lm1.c)
+std2.c <- rstandard(lm2.c)
+std3.c <- rstandard(lm3.c)
+std4.c <- rstandard(lm4.c)
+std5.c <- rstandard(lm5.c)
+std6.c <- rstandard(lm6.c)
+#Acquiring new residual standards
+
+hist(std1.c)
+qqnorm(std1.c)
+qqline(std1.c)
+plot(std1.c ~ lm1.c$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch =16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+
+hist(std2.c)
+qqnorm(std2.c)
+qqline(std2.c)
+plot(std2.c ~ lm2.c$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+
+hist(std3.c)
+qqnorm(std3.c)
+plot(std3.c ~ lm3.c$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+
+hist(std4.c)
+qqnorm(std4.c)
+plot(std4.c ~ lm4.c$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+
+hist(std5.c)
+qqnorm(std5.c)
+plot(std5.c ~ lm5.c$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+
+hist(std6.c)
+qqnorm(std6.c)
+plot(std6.c ~ lm6.c$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+```
+
+```{r}
+plot(Arom ~ X990+X992+X994+X996+X998+X1000+X1002+X1004+X1006+X1008+X1010+X1012+X1014+X1016+X1018+X1020+X1022+X1024+X1026+X1028+X1030+X1032+X1034+X1036+X1038+X1040+X1042+X1044+X1046+X1048+X1050+X1250, data = df.u)
+#Replotting all plots with new dataset to see any change
+#Other points not removed were found to be leverage points
+#They only affect 1 or 2 of the graphs and hence should not be removed
+```
+
+```{r}
+set.seed(13)
+TestIndex <- sample(nrow(df.u), floor(0.15 * nrow(df.u)))
+Test <- df.u[TestIndex, ]
+Train <- df.u[-TestIndex, ]
+#Splitting Train and Test datasets
+```
+
+```{r}
+AllSubsets2 <- regsubsets(Arom ~ ., nvmax = 1, nbest = 4, data = df.u, really.big = T)
+#subsetting the data again checking for the best value of R-squared
+#nbest allows to print out the top 4 models in order of how good they are
+summ2 <- summary(AllSubsets2)
+summ2$outmat
+#Returns a visualization of where the best 4 models are located
+```
+
+```{r}
+lm1046.s <- lm(Arom ~ X1046, data = set)
+lm1046 <- lm(Arom ~ X1046, data = df.u)
+lm996 <- lm(Arom ~ X996, data = df.u)
+lm994 <- lm(Arom ~ X994, data = df.u)
+lm1044 <- lm(Arom ~ X1044, data = df.u)
+#Linear models based on new dataset
+
+logm1046 <- lm(log(Arom) ~ X1046, data = df.u)
+lm1046.cubed <- lm((Arom)^1/3 ~ X1046, data = df.u)
+lm1046.2 <- lm((Arom)^2 ~ X1046, data = df.u)
+lm1046.sqrt <- lm(sqrt(Arom) ~ X1046, data = df.u)
+#Transformations of best model
+
+summary(lm1046.s)
+summary(lm1046)
+summary(logm1046)
+summary(lm1046.cubed)
+summary(lm1046.sqrt)
+summary(lm1046.2)
+#Checking if transformations perform better
+
+summary(lm996)
+summary(lm1044)
+summary(lm994)
+#Checking performance of other models
+anova(lm1046)
+#Checking F statistic for model
+
+std1046 <- rstandard(lm1046)
+#Residual standard of best model
+
+hist(std1046)
+qqnorm(std1046)
+plot(std1046 ~ lm1046$fitted.values, xlab = "fitted values", ylab =
+"standardized residuals", pch = 16, col = rgb(1, 0, 0, alpha = 0.5))
+abline(h = 0) 
+abline(h = -3:3, lty = 2)
+#Histogram, QQplot and scatterplot to find leverage/outliers in X1046
+
+lm1046.t <- lm(Arom ~ X1046, data = Train)
+#Crete new model from Training set
+
+pred.1046 <- predict(lm1046.t, newdata = Test)
+predict(lm1046.t, newdata = Test)
+#Create prediction for model against Test data
+Actual <- Test$Arom
+#Acquires actual values from Test data
+M <- length(Actual)
+#Length of observations from Test data
+RMSEP1046 <- sqrt(sum((Actual - pred.1046)^2)/M)
+#Root Mean Square Error Prediction (RMSEP) of model
+
+Range <- range(c(Actual, pred.1046))
+par(pty = "s")
+plot(pred.1046, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+abline(0, 1)
+title(main = "Forward selection")
+#Plot of actual values against predicted values
+RMSEP1046
+#Value of RMSEP
+```
+
+```{r}
+lm0 <- lm(Arom ~ 1, data = Train)
+#Creates a very simple linear model from Train data, just based on Aromatic content
+lm.all <- lm(Arom ~ ., data = Train)
+#Creates a linear model with Train data
+```
+
+```{r}
+lm.fwd <- step(lm0, scope = formula(lm.all), direction = 'forward', trace = 0)
+#Creates the most optimal linear model, based on forward selection
+lm.bck <- step(lm.all, direction = 'backward', trace = 0)
+#Creates the most optimal linear model, based on backwards selection
+
+lm.fwd$anova
+#Used to see the change in Akaike Information Criterion (AIC) of forward selection
+lm.bck$anova
+#Used to see the change in Akaike Information Criterion (AIC) of backward selection
+```
+
+```{r}
+pred.fwd <- predict(lm.fwd, newdata = Test)
+#Predictions on forward model
+pred.bck <- predict(lm.bck, newdata = Test)
+#Prediction on backwards model
+Actual <- Test$Arom
+M <- length(Actual)
+
+RMSEP.fwd <- sqrt(sum((Actual - pred.fwd)^2)/M)
+RMSEP.bck <- sqrt(sum((Actual - pred.bck)^2)/M)
+
+Range <- range(c(Actual, pred.fwd))
+par(pty = "s")
+plot(pred.fwd, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+abline(0, 1)
+title(main = "Forward selection")
+
+Range <- range(c(Actual, pred.bck))
+par(pty = "s")
+plot(pred.bck, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+abline(0, 1)
+title(main = "Backward selection")
+
+RMSEP.fwd
+RMSEP.bck
+```
+
+```{r}
+y <- Train$Arom      
+X <- as.matrix.data.frame(Train[, -1]) 
+Arom.L1 <- glmnet(X, y)
+Arom.L1.cv <- cv.glmnet(X, y, type.measure = "mse", alpha = 1)
+
+par(mfrow = c(1, 2))
+plot(Arom.L1, xvar = "lambda", label = TRUE)
+abline(v = log(c(Arom.L1.cv$lambda.min, Arom.L1.cv$lambda.1se)), lty = 2:3)
+plot(Arom.L1.cv)
+par(mfrow = c(1, 1))
+
+coef(Arom.L1.cv)
+names(Arom.L1)
+newX <- as.matrix.data.frame(Test[, -1])
+PredictArom <- predict(Arom.L1.cv, newx = newX)
+Arom.L1
+ActualArom <- Test$Arom
+
+N <- nrow(Test) 
+RMSEP.43 <- sqrt(sum((ActualArom - c(PredictArom))^2)/N)
+Arom.L1
+names(Arom.L1)
+
+par(pty = "s") 
+Range <- range(c(PredictArom, ActualArom)) 
+plot(PredictArom, ActualArom, xlab = "predicted aromatic content (LASSO)", 
+     ylab = "actual aromatic content", xlim = Range, ylim = Range, 
+     main = paste("RMSEP =", round(RMSEP.43, 3) ))
+abline(0, 1)
+
+fit <- glmnet(X, y) 
+
+k <- Arom.L1$df
+n <- Arom.L1$nobs
+AIC <- n*log(deviance(Arom.L1)/n)+2*k
+AIC
+k
+```
+
+```{r}
+lm.fwd43 <- step(lm0, scope = formula(lm.all), direction = 'forward', trace = 0, steps = 43)
+summary(lm.fwd43)
+press(lm.fwd43)
+pred.fwd43 <- predict(lm.fwd43, newdata = Test)
+
+RMSEP.43 <- sqrt(sum((Actual - pred.fwd43)^2)/M)
+RMSEP.43
+
+Range <- range(c(Actual, pred.fwd43))
+par(pty = "s")
+plot(pred.fwd43, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+text(45, 100, paste("RMSEP: ", round(RMSEP.43, 2)), adj = 0)
+abline(0, 1)
+title(main = "Forward selection with 43 variables")
+```
+
+
+
+
+
+
+```{r}
+lm.fwd10 <- step(lm0, scope = formula(lm.all), direction = 'forward', trace = 0, steps = 10)
+lm.fwd15 <- step(lm0, scope = formula(lm.all), direction = 'forward', trace = 0, steps = 15)
+lm.fwd20 <- step(lm0, scope = formula(lm.all), direction = 'forward', trace = 0, steps = 20)
+
+summary(lm.fwd10)
+summary(lm.fwd15)
+summary(lm.fwd20)
+
+press(lm.fwd10)
+pred.fwd10 <- predict(lm.fwd10, newdata = Test)
+press(lm.fwd15)
+pred.fwd15 <- predict(lm.fwd15, newdata = Test)
+press(lm.fwd20)
+pred.fwd20 <- predict(lm.fwd20, newdata = Test)
+
+RMSEP.10 <- sqrt(sum((Actual - pred.fwd10)^2)/M)
+RMSEP.15 <- sqrt(sum((Actual - pred.fwd15)^2)/M)
+RMSEP.20 <- sqrt(sum((Actual - pred.fwd20)^2)/M)
+
+Range <- range(c(Actual, pred.fwd10))
+par(pty = "s")
+plot(pred.fwd10, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+text(45, 100, paste("RMSEP: ", round(RMSEP.10, 2)), adj = 0)
+abline(0, 1)
+title(main = "Forward selection with 10 variables")
+
+Range <- range(c(Actual, pred.fwd15))
+par(pty = "s")
+plot(pred.fwd15, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+text(45, 100, paste("RMSEP: ", round(RMSEP.15, 2)), adj = 0)
+abline(0, 1)
+title(main = "Forward selection with 15 variables")
+
+Range <- range(c(Actual, pred.fwd20))
+par(pty = "s")
+plot(pred.fwd20, Actual, xlab = "predicted aromatic content", ylab = "actual aromatic content")
+text(45, 100, paste("RMSEP: ", round(RMSEP.20, 2)), adj = 0)
+abline(0, 1)
+title(main = "Forward selection with 20 variables")
+
+RMSEP.10
+RMSEP.15
+RMSEP.20
+```
+
+
