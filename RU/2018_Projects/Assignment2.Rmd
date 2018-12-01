@@ -1,0 +1,435 @@
+---
+title: "STAT2003 Analytics for Experimental and Simulated Data"
+author: '**ASSIGNMENT 2**'
+date: "5 pm, 6^th^ November 2018 "
+output:
+  word_document:
+    fig_caption: no
+  html_document: default
+  pdf_document:
+    number_section: yes
+---
+Due Date: 5 pm, 6^{th} Nov 2018
+
+```{r}
+library(lhs)
+library(DiceDesign)
+library(FrF2)
+library(recoder)
+library(leaps)
+library(analogue)
+library(rriskDistributions)
+require(MASS)
+require(AlgDesign)
+require(SPOT)
+```
+
+# Introduction
+Your task is to develop a meta model (proxy model) for the water flow rate  (WFR) through a borehole $y_{0} (m^{3}/yr)$. The WFR is determined by eight input variables  as described below 
+
+                                                               
+Input Variable | Variable Description                             | Lower Limit | Upper Limit|Code
+ --------------| -------------------------------------------------|-------------|------------|------              
+$r_{w}$        |Radius of borehole (m)                            | 0.05        |  0.15      |$x_{1}$
+$r$            |Radius of influence (m)                           | 100         | 50000      |$x_{2}$
+$T_{u}$        |Transitivity of upper aquifer ($m^{2}/yr$)        | 63070       | 115600     |$x_{3}$
+$H_{u}$        |Potentiometric head of upper aquifer ($m^{2}/yr$) | 900        | 1110       |$x_{4}$
+$T_{l}$        |Transmissivity of lower aquifer ($m^{2}/yr$)      | 63.1        | 116        |$x_{5}$
+$H_{l}$        |Potentiometric head of lower aquifer (m)          | 700         | 820        |$x_{6}$
+$L$            |Length of borehole (m)                            | 1120        | 1680       |$x_{7}$
+$K_{w}$        |Hydraulic conductivity of borehole ($m/yr$)       | 9855        | 12045      |$x_{8}$
+
+
+For any given settings of input variables, value of the water flow rate can be computed by function _WaterFlowRateInBorehole_ given below
+
+```{r }
+WaterFlowRateInBorehole<-function(x){
+(2*(22/7)*x[3]*(x[4]-x[6]))/((log(x[2]/x[1]))*(1+((2*x[7]*x[3])/((log(x[2]/x[1]))*(x[1]^2)*x[8]))+(x[3]/x[5]))) + rnorm(1,10,20)
+}
+
+#xmid=c(0.1,25000,89335,5055,89.5,760,1400,10950)
+set.seed(13)
+pbBore <- pb(12, 8, randomize = FALSE, seed = 13) #Creates Plackett Burmann 12 runs
+#Converts factors into numeric values for each column
+A <- as.numeric(pbBore$A) 
+B <- as.numeric(pbBore$B)
+C <- as.numeric(pbBore$C)
+D <- as.numeric(pbBore$D)
+E <- as.numeric(pbBore$E)
+F1 <- as.numeric(pbBore$F)
+G <- as.numeric(pbBore$G)
+H <- as.numeric(pbBore$H)
+
+#According to whether the value is 2 or 1, convert it into the upper and lower limit accordingly
+rBore <- recoder(A, '== 2: 0.15; == 1: 0.05')
+rInf <- recoder(B, '== 2: 50000; == 1: 100')
+trans <- recoder(C, '== 2: 115600; == 1: 63070')
+potent <- recoder(D, '== 2: 1100; == 1: 900')
+transmis <- recoder(E, '== 2: 116; == 1: 63.1')
+potent2 <- recoder(F1, '== 2: 820; == 1: 700')
+lenBore <- recoder(G, '== 2: 1680; == 1: 1120')
+hydra <- recoder(H, '== 2: 12045; == 1: 9855')
+
+
+mtxPB <- matrix(c(rBore,rInf,trans, potent, transmis, potent2, lenBore, hydra), nrow = 12, ncol = 8) #Adds all results (upper and lower limit) into a matrix
+outMtx <- matrix(nrow = 12, ncol = 1) #Initiates a matrix to store results
+mtxPB
+#Generates results of upper and lower limit matrix and adds it to the results matrix
+for (i in seq(1,12)){
+  outMtx[i,1] <- WaterFlowRateInBorehole(mtxPB[i,])
+}
+outMtx
+#WaterFlowRateInBorehole(xmid)
+```
+
+```{r}
+reformatDF <- data.frame(mtxPB)
+reformatDF <- cbind(reformatDF,outMtx)
+reformatDF #matrix containing results and min/max ranges
+
+AllSubsets <- regsubsets(outMtx~., data = reformatDF, nvmax = 11, nbest = 1)
+AllSubSum <- summary(AllSubsets)
+AllSubSum$outmat
+summary(AllSubSum)
+plot(AllSubSum$cp)
+boreAOV <- aov(outMtx~., data = reformatDF)
+anova(boreAOV)
+AllSubSum$outmat
+
+
+```
+
+```{r}
+# creating our model using stewpise selection
+SimplestModel <- lm(outMtx ~ 1, data = reformatDF)
+FullModel <- lm(outMtx ~., data = reformatDF)
+Forward <- step(SimplestModel, scope = formula(FullModel), direction = 'forward')
+summary(Forward)
+print("Forward")
+coef(Forward)
+Backward <- step(FullModel, direction = 'backward')
+print("Backward")
+coef(Backward)
+Step <- step(SimplestModel, scope = formula(FullModel))
+print("Step")
+coef(Step)
+```
+
+```{r}
+set.seed(13)
+xMatrix <- gen.factorial(levels = 3, nVars = 4, varNames = c("X1","X2","X4","X5"))
+
+xd <- optFederov(~X1+X2+X4+X5, data = xMatrix, 50)
+#Cm <- mean()
+X1_m <- mean(range(0.05, 0.15))
+X2_m <- mean(range(100, 50000))
+X3_m <- mean(range(63070, 115600))
+X4_m <- mean(range(900, 1110))
+X5_m <- mean(range(63.1, 116))
+X6_m <- mean(range(700, 820))
+X7_m <- mean(range(1120, 1680))
+X8_m <- mean(range(9855, 12045))
+
+X1 <- xd$design$X1
+X2 <- xd$design$X2
+X4 <- xd$design$X4
+X5 <- xd$design$X5
+
+X1 <- recoder(X1, '== 1: 0.15; == -1: 0.05; == 0: X1_m')
+X2 <- recoder(X2, '== 1: 100; == -1: 50000; == 0: X2_m')
+X4 <- recoder(X4, '== 1: 900; == -1: 1110; == 0: X4_m')
+X5 <- recoder(X5, '== 1: 63.1; == -1: 116; == 0: X5_m')
+
+num_rows <- nrow(xd$design)
+
+X3 <- rep(X3_m, num_rows)
+X6 <- rep(X6_m, num_rows)
+X7 <- rep(X7_m, num_rows)
+X8 <- rep(X8_m, num_rows)
+
+mtxDopt <- matrix(c(X1,X2,X3,X4,X5,X6,X7,X8), ncol = 8)
+mtxDopt
+```
+
+```{r}
+test_mtx <- data.frame(cbind(runif(50, 0.05, 0.15),
+                      runif(50, 100, 50000),
+                      runif(50, 63070, 115600),
+                      runif(50, 900, 1110),
+                      runif(50, 63.1, 116),
+                      runif(50, 700, 820),
+                      runif(50, 1120, 1680),
+                      runif(50, 9855, 12045), 
+                     ncol = 8, 
+                     nrow = 50))
+```
+
+```{r}
+mtxRes <- matrix(nrow = num_rows, ncol = 1)
+for (i in seq(1,50)){
+  mtxRes[i,1] <- WaterFlowRateInBorehole(mtxDopt[i,])
+}
+
+mtx_opt <- cbind(mtxDopt, mtxRes)
+eg <- as.data.frame(mtx_opt)
+eg
+optLm <- lm(V9~V1+V2+V4+V5+V1:V4, data = eg)
+optPred <- predict(optLm)
+anova(optLm)
+plot(optLm)
+summary(optLm)
+
+newMtx <- as.matrix(cbind(mtxRes, optPred))
+
+RMSEP <- function(y){
+  sqrt((sum((y[,2]-y[,1])^2))/50)
+}
+
+RMSEP4 <- RMSEP(newMtx)
+RMSEP4
+plot(newMtx, ylab = "Predicted values", xlab = "Actual values", main = "Predicted vs Actual")
+abline(1,1)
+```
+
+```{r}
+set.seed(13)
+xMatrix <- gen.factorial(levels = 3, nVars = 6, varNames = c("X1","X2","X3","X4","X5","X7"))
+
+xd <- optFederov(~X1+X2+X3+X4+X5+X7, data = xMatrix, 50)
+#Cm <- mean()
+X1_m <- mean(range(0.05, 0.15))
+X2_m <- mean(range(100, 50000))
+X3_m <- mean(range(63070, 115600))
+X4_m <- mean(range(900, 1110))
+X5_m <- mean(range(63.1, 116))
+X6_m <- mean(range(700, 820))
+X7_m <- mean(range(1120, 1680))
+X8_m <- mean(range(9855, 12045))
+
+X1 <- xd$design$X1
+X2 <- xd$design$X2
+X3 <- xd$design$X3
+X4 <- xd$design$X4
+X5 <- xd$design$X5
+X7 <- xd$design$X7
+
+X1 <- recoder(X1, '== 1: 0.15; == -1: 0.05; == 0: X1_m')
+X2 <- recoder(X2, '== 1: 100; == -1: 50000; == 0: X2_m')
+X3 <- recoder(X3, '== 1: 115600; == -1: 63070; == 0: X3_m')
+X4 <- recoder(X4, '== 1: 900; == -1: 1110; == 0: X4_m')
+X5 <- recoder(X5, '== 1: 63.1; == -1: 116; == 0: X5_m')
+X7 <- recoder(X7, '== 1: 1680; == -1: 1120; == 0: X7_m')
+
+num_rows <- nrow(xd$design)
+
+X6 <- rep(X6_m, num_rows)
+X8 <- rep(X8_m, num_rows)
+
+mtxDopt <- matrix(c(X1,X2,X3,X4,X5,X6,X7,X8), ncol = 8)
+```
+
+```{r}
+test_mtx <- data.frame(cbind(runif(50, 0.05, 0.15),
+                      runif(50, 100, 50000),
+                      runif(50, 63070, 115600),
+                      runif(50, 900, 1110),
+                      runif(50, 63.1, 116),
+                      runif(50, 700, 820),
+                      runif(50, 1120, 1680),
+                      runif(50, 9855, 12045), 
+                     ncol = 8, 
+                     nrow = 50))
+```
+
+```{r}
+mtxRes2 <- matrix(nrow = num_rows, ncol = 1)
+for (i in seq(1,50)){
+  mtxRes2[i,1] <- WaterFlowRateInBorehole(mtxDopt[i,])
+}
+mtx_opt2 <- cbind(mtxDopt, mtxRes)
+eg2 <- as.data.frame(mtx_opt2)
+
+optLm2 <- lm(V9~V1+V2+V3+V4+V5+V7+V2:V5, data = eg2)
+optPred2 <- predict(optLm2)
+summary(optLm2)
+anova(optLm2)
+
+plot(optLm2)
+newMtx2 <- as.matrix(cbind(mtxRes2, optPred2))
+
+
+
+RMSEP <- function(y){
+  sqrt((sum((y[,2]-y[,1])^2))/50)
+}
+plot(newMtx2)
+RMSEP(newMtx2)
+chisq.test(newMtx2)
+```
+
+#Questions
+
+
+1. Use an appropriate screening design to identify the significant input variables. Clearly specify the design used, the data simulated,  subsequent analysis and significant variables.  [10; Maximum of one page]
+
+2. Based on the results of screening design develop a meta model for predicting WFR using a maximum of 50 runs (simulated values of WFR). Use D-optimal design and space filling design coupled with appropriate modelling methods. Compare and contrast the performance of the two models developed. Your response should include the designs used, search criterion, simulated data, metamodel and informative graphs for comparing the performance of two metamodesl.[25: Maximum of two page]
+```{r}
+set.seed(13)
+lhs <- lhsDesign(50, 4, TRUE, seed = 13)
+full_lhs <- lhsDesign(50, 8, TRUE, seed = 18)
+
+lhs_d <- lhs$design
+flhs_d <- full_lhs$design
+```
+
+```{r}
+set.seed(13)
+ColX1 <- (0.05+(0.15-0.05)*lhs_d[,1])
+ColX2 <- (100+(50000-100)*lhs_d[,2])
+ColX4 <- (900+(1110-900)*lhs_d[,3])
+ColX5 <- (63.1+(116-63.1)*lhs_d[,4])
+ColX3 <- (89335)
+ColX6 <- (760)
+ColX7 <- (1400)
+ColX8 <- (10950)
+
+NewColX1 <- (0.05+(0.15-0.05)*flhs_d[,1])
+NewColX2 <- (100+(50000-100)*flhs_d[,2])
+NewColX3 <- (63070+(115600-63070)*flhs_d[,3])
+NewColX4 <- (900+(1110-900)*flhs_d[,4])
+NewColX5 <- (63.1+(116-63.1)*flhs_d[,5])
+NewColX6 <- (700+(820-700)*flhs_d[,6])
+NewColX7 <- (1120+(1680-1120)*flhs_d[,7])
+NewColX8 <- (9855+(12045-9855)*flhs_d[,8])
+
+
+
+X <- (cbind(ColX1, ColX2, ColX3, ColX4, ColX5, ColX6, ColX7, ColX8))
+X1 <-(cbind(NewColX1, NewColX2, NewColX3, NewColX4, NewColX5, NewColX6, NewColX7, NewColX8))
+X
+
+```
+
+```{r}
+set.seed(13)
+Xmat = X
+Xnew = X1
+
+lhd_out <- matrix(nrow = 50, ncol = 1)
+for (i in seq(1,50)){
+  lhd_out[i,1] <- WaterFlowRateInBorehole(X[i,])
+}
+
+y1 <- as.matrix(apply(X,1,WaterFlowRateInBorehole))
+y2 <- as.matrix(apply(Xnew,1,WaterFlowRateInBorehole))
+
+opt_lhs <- as.matrix(cbind(X,y1))
+```
+
+```{r}
+set.seed(13)
+fit1 <- buildKriging(X, y1); fit1
+fit2 <- buildKriging(Xnew,y2); fit2
+
+hehe <- predict(fit1, X); hehe
+haha <- predict(fit2, Xnew)
+
+dOptRes <- as.matrix(cbind(haha$y,y1))
+
+dOptRes2 <- as.matrix(cbind(hehe$y,y1))
+
+plot(dOptRes,ylab = "Predicted values", xlab = "Actual values", main = "Predicted vs Actual")
+abline(1,1)
+RMSEP(dOptRes)
+RMSEP <- function(y){
+  sqrt((sum((y[,2]-y[,1])^2))/50)
+}
+
+plot(dOptRes2, ylab = "Predicted values", xlab = "Actual values", main = "Predicted vs Actual")
+abline(1,1)
+RMSEP(dOptRes2)
+
+```
+
+3. Using best  meta models in 2, and assuming that each range of input variable provided is the 5th, and 95th percentile respectively, generate the distribution of WFR.  Present informative graphs and specify the features of the distribution. [10: Maximum of one page]
+```{r}
+percentile <- qnorm(0.95)
+X1_sd <- (X1_m-0.05)/percentile
+X2_sd <- (X2_m-100)/percentile
+X4_sd <- (X4_m-900)/percentile
+X5_sd <- (X5_m-63.1)/percentile
+
+distMtx <- lhsDesign(200, 4, TRUE, seed = 63)
+matrice <- distMtx$design
+
+new_Val1 <- abs(qnorm(matrice[,1], X1_m, X1_sd))
+new_Val2 <- abs(qnorm(matrice[,1], X2_m, X2_sd))
+new_Val4 <- abs(qnorm(matrice[,1], X4_m, X4_sd))
+new_Val5 <- abs(qnorm(matrice[,1], X5_m, X5_sd))
+
+finalMtx <- matrix(cbind(new_Val1, new_Val2, X3_m, new_Val4, new_Val5, X6_m, X7_m, X8_m), ncol = 8)
+
+Pt3_out <- matrix(nrow = 200, ncol = 1)
+for (i in seq(1,nrow(Pt3_out))){
+  Pt3_out[i,1] <- WaterFlowRateInBorehole(finalMtx[i,])
+}
+
+finalDf <- as.data.frame(cbind(finalMtx, Pt3_out))
+is.factor(finalDf$V4)
+finalLm <- lm(V9~V1+V2+V4+V5+V1:V4, data=  finalDf)
+summary(finalLm)
+
+final_Pred <- predict(finalLm)
+final_final <- matrix(c(Pt3_out, final_Pred), ncol=2)
+
+plot(final_final, ylab = "Predicted values", xlab = "Actual values", main = "Predicted vs Actual")
+abline(1,1)
+RMSEP(final_final)
+hist(final_Pred, main = "Histogram of Water Flow Rate (WFR)", xlab = "Values")
+
+```
+distMtx <- lhsDesign(50, 4, TRUE)
+matrice <- distMtx$design
+
+
+val_X1 <- abs(qnorm(50, X1_m, X1_m/abs(sd)))
+val_X2 <- abs(qnorm(50, X2_m, X2_m/abs(sd)))
+val_X4 <- abs(qnorm(50, X4_m, X4_m/abs(sd)))
+val_X5 <- abs(qnorm(50, X5_m, X5_m/abs(sd)))
+varMtx <- as.matrix(cbind(val_X1,val_X2,val_X4,val_X5), ncol = 4)
+
+
+
+distMtx$design[,1]*varMtx[,1]
+newlyMtx <- matrix(nrow = 50, ncol = 4)
+mtxMult <- function(mtx1, mtx2){
+  for (i in seq(1,ncol(mtx1))){
+    newlyMtx[,i] <- mtx1[,i]*mtx2[,i]
+  }
+  return(newlyMtx)
+}
+
+somMtx <- matrix(cbind(X3_m,X6_m,X7_m,X8_m), nrow=50, ncol = 4, byrow = TRUE)
+hello <- mtxMult(matrice,varMtx)
+Pt3df <- as.data.frame(cbind(hello,somMtx))
+Pt3df <- as.matrix(Pt3df[c("V1","V2","V5","V3","V4","V6","V7", "V8")]);Pt3df
+
+                        
+Pt3_out <- matrix(nrow = 50, ncol = 1)
+for (i in seq(1,50)){
+  Pt3_out[i,1] <- WaterFlowRateInBorehole(Pt3df[i,])
+}
+
+finalMtx <- as.data.frame(cbind(Pt3df,Pt3_out))
+
+finalLm <- lm(V9~V1+V2+V3+V4+V1:V3, data=  finalMtx)
+lm_pred <- predict(finalLm)
+hist(lm_pred)
+
+
+```{r}
+rbinom(9, 16, 0.375)
+```
+
+
+
